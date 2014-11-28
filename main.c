@@ -61,29 +61,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Simplelink includes
-#include "simplelink.h"
-
-//Driverlib includes
-#include "hw_types.h"
-#include "hw_ints.h"
-#include "rom.h"
-#include "rom_map.h"
-#include "interrupt.h"
-#include "prcm.h"
-#include "utils.h"
-
-//Free_rtos/ti-rtos includes
-#include "osi.h"
-
-//Common interface includes
-#include "gpio_if.h"
-#ifndef NOTERM
-#include "uart_if.h"
-#endif
-#include "common.h"
-#include "pinmux.h"
-
+#include "cc3200_common.h"
+#include "./misc/audio_spi/vs1053b.h"
+#include "./doubanFM/doubanfm.h"
 
 #define APPLICATION_NAME        "WLAN STATION"
 #define APPLICATION_VERSION     "1.1.0"
@@ -690,6 +670,7 @@ static long CheckInternetConnection()
     long lRetVal = -1;
 
     CLR_STATUS_BIT(g_ulStatus, STATUS_BIT_PING_DONE);
+    CLR_STATUS_BIT(g_ulStatus, STATUS_BIT_CONNECTION);
     g_ulPingPacketsRecv = 0;
 
     // Set the ping parameters
@@ -729,6 +710,7 @@ static long CheckInternetConnection()
     }
 
     // Internet connection is successful
+    SET_STATUS_BIT(g_ulStatus, STATUS_BIT_CONNECTION);
     return SUCCESS;
 }
 
@@ -955,7 +937,26 @@ BoardInit(void)
     PRCMCC3200MCUInit();
 }
 
+void FMPlayer(void *pvParameters)
+{
+	// Init our player
+	audio_play_start();
 
+	// Check connection before lanuching
+	while(1)
+	{
+		if(!(IS_INET_CONNECT(g_ulStatus)))
+		{
+			osi_Sleep(5000);
+		}
+		else
+			break;
+	}
+
+	fm_player();
+
+	LOOP_FOREVER();
+}
 //*****************************************************************************
 //                            MAIN FUNCTION
 //*****************************************************************************
@@ -1015,6 +1016,18 @@ void main()
         LOOP_FOREVER();
     }
      
+    //
+    // Start our app
+    //
+    lRetVal = osi_TaskCreate( FMPlayer, \
+                                (const signed char*)"Douban FM Player", \
+                                OSI_STACK_SIZE, NULL, 1, NULL );
+    if(lRetVal < 0)
+    {
+        ERR_PRINT(lRetVal);
+        LOOP_FOREVER();
+    }
+
     //
     // Start the task scheduler
     //
