@@ -12,9 +12,6 @@
 #include "http.h"
 #include "../misc/audio_spi/vs1053b.h"
 
-#define UARTprintf	Report
-#define UART_PRINT	Report
-
 #define POST_BUFFER_OLD     " HTTP/1.1 \r\nAccept: application/xml,application/xhtml+xml,text/html,*/*;q=0.5\r\nConnection:keep-alive\r\nUser-Agent:Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US)\r\n"
 #define HTTP_FILE_NOT_FOUND    "404 Not Found" /* HTTP file not found response */
 #define HTTP_STATUS_OK         "200 OK"  /* HTTP status ok response */
@@ -25,27 +22,11 @@
 #define HTTP_CONNECTION        "Connection:" /* HTTP Connection header */
 #define HTTP_CONNECTION_CLOSE  "close"  /* HTTP Connection header value */
 
-#define DNS_RETRY       5 /* No of DNS tries */
-
 #define HTTP_END_OF_HEADER  "\r\n\r\n"  /* string marking the end of headers in response */
 
 #define MAX_BUFF_SIZE  1460
 
-
-
-enum
-{
-    CONNECTED = 0x1,
-    IP_ACQUIRED = 0x2
-}e_Stauts;
-
-
-void CLI_Write(const char *msg)
-{
-	UARTprintf(msg);
-}
-
-int CreateConnection(unsigned long DestinationIP)
+static int CreateConnection(unsigned long DestinationIP)
 {
     SlSockAddrIn_t  Addr;
     int             Status = 0;
@@ -63,7 +44,7 @@ int CreateConnection(unsigned long DestinationIP)
     if( SockID < 0 )
     {
         /* Error */
-        CLI_Write("Error while opening the socket\r\n");
+        UART_PRINT("Error while opening the socket\r\n");
         return -1;
     }
 
@@ -80,7 +61,7 @@ int CreateConnection(unsigned long DestinationIP)
     return SockID;
 }
 
-unsigned long hexToi(unsigned char *ptr)
+static unsigned long hexToi(unsigned char *ptr)
 {
     unsigned long result = 0;
     int idx = 0;
@@ -102,40 +83,64 @@ unsigned long hexToi(unsigned char *ptr)
     return result;
 }
 
-//****************************************************************************
-//
-//! \brief Obtain the file from the server
-//!
-//! This function requests the file from the server and save it in
-//! temporary file (TEMP_FILE_NAME) in serial flash.
-//! To request a different file for different user needs to modify the
-//! PREFIX_BUFFER and POST_BUFFER macros.
-//!
-//! \param[in]      None
-//!
-//! \return         0 for success and negative for error
-//
-//****************************************************************************
+static int get_mp3(char *buff, char songs[][128], int max)
+{
+    char *ptr;
+    char *end;
+    int i,j,k,index;
+    char b[256] = {0};
+
+    ptr = buff;
+
+	index = 0;
+
+	memset(b, '\0', sizeof(b));
+
+	while(strlen(songs[index]) && index < max)
+		index++;
+    while(index < max)
+    {
+		ptr = strstr(ptr, "url\":");
+
+		end = strstr(ptr, "mp3");
+
+		if(ptr == 0 || end == 0)
+			break;
+		j = end - ptr;
+		ptr += 6;
+		k = 0;
+		for(i = 0; i < j - 3; i++)
+		{
+			if (*(ptr + i) == '\\')
+			{
+				k++;
+
+			}
+			else
+				b[i-k] = *(ptr + i);
+		}
+		memcpy(songs[index++], b, strlen(b));
+		//UART_PRINT("[paras: %s]\r\n", b);
+    }
+    //UART_PRINT("paras over\r\n");
+    return index;
+}
+
 int play_song(char *req)
 {
-	int           transfer_len = 0;
-	long          retVal = 0;
+	int  transfer_len = 0;
+	long retVal = 0;
 
 	char *pBuff = 0;
 	char *end = 0;
 
-//	unsigned int bytesReceived;
-
 	char g_buff[MAX_BUFF_SIZE] = {0};
 	char s_buff[512] = {0};
-
 	char host[64] = {0};
 
 	int g_iSockID;
 	unsigned long ip;
-
 	int i;
-
 	int nfds;
 	SlFdSet_t readsds;
 	struct SlTimeval_t timeout;
@@ -154,7 +159,7 @@ int play_song(char *req)
 
 	if (!end)
 	{
-		Report("Cannot get host name \r\n");
+		UART_PRINT("Cannot get host name \r\n");
 		return -1;
 	}
 
@@ -169,7 +174,7 @@ int play_song(char *req)
 	retVal = sl_NetAppDnsGetHostByName((signed char *)host, strlen(host), &ip, SL_AF_INET);
     if(retVal < 0)
     {
-    	Report("Cannot get host %s: %d\r\n", host, ip);
+    	UART_PRINT("Cannot get host %s: %d\r\n", host, ip);
     	return -1;
     }
 
@@ -206,7 +211,7 @@ int play_song(char *req)
 
 
 	memset(g_buff, 0, sizeof(g_buff));
-	// get the reply from the server in buffer.
+	// Recv HTTP Header.
 	transfer_len = sl_Recv(g_iSockID, &g_buff[0], MAX_BUFF_SIZE, 0);
 
 	if(transfer_len > 0)
@@ -218,20 +223,18 @@ int play_song(char *req)
 
 			goto end;
 		}
-/*
+
 		// if not "200 OK" return error
 		if(strstr((const char *)g_buff, HTTP_STATUS_OK) == 0)
 		{
 			UART_PRINT("[HTTP] no 200; %d\r\n", transfer_len);
 
-			goto prep;
+			goto end;
 		}
-*/
-		// "\r\n\r\n" marks the end of headers
 
-		//pBuff = strstr((const char *)g_buff, HTTP_END_OF_HEADER);
-		pBuff = g_buff;
-		while(pBuff != NULL)											// XXX
+		pBuff = strstr((const char *)g_buff, HTTP_END_OF_HEADER);
+
+		while(pBuff == NULL)											// XXX
 		{
 			memset(g_buff, 0, sizeof(g_buff));
 
@@ -253,13 +256,15 @@ int play_song(char *req)
 					transfer_len = sl_Recv(g_iSockID, &g_buff[0], MAX_BUFF_SIZE, 0);
 			}
 
-			//pBuff = strstr((const char *)g_buff, HTTP_END_OF_HEADER);			//XXX this may cause /r/n in two buff
 			if(transfer_len == 0)
+			{
 				pBuff = NULL;
+				goto end;
+			}
+			pBuff = strstr((const char *)g_buff, HTTP_END_OF_HEADER);			//XXX this may cause /r/n in two buff
 		}
-		UART_PRINT("Recv song data done \r\n");
-//		goto end;
-		// Increment by 4 to skip "\r\n\r\n"
+
+		// "\r\n\r\n"
 		pBuff += 4;
 
 		// Adjust buffer data length for header size
@@ -304,49 +309,6 @@ end:
 	return 0;
 }
 
-int get_mp3(char *buff, char songs[][128], int max)
-{
-    char *ptr;
-    char *end;
-    int i,j,k,index;
-    char b[256] = {0};
-
-    ptr = buff;
-
-	index = 0;
-
-	memset(b, '\0', sizeof(b));
-
-	while(strlen(songs[index]) && index < max)
-		index++;
-    while(index < max)
-    {
-		ptr = strstr(ptr, "url\":");
-
-		end = strstr(ptr, "mp3");
-
-		if(ptr == 0 || end == 0)
-			break;
-		j = end - ptr;
-		ptr += 6;
-		k = 0;
-		for(i = 0; i < j - 3; i++)
-		{
-			if (*(ptr + i) == '\\')
-			{
-				k++;
-
-			}
-			else
-				b[i-k] = *(ptr + i);
-		}
-		memcpy(songs[index++], b, strlen(b));
-		//UART_PRINT("[paras: %s]\r\n", b);
-    }
-    //UART_PRINT("paras over\r\n");
-    return index;
-}
-
 int request_song(char *req, char songs[][128], int max)
 {
 	int           transfer_len = 0;
@@ -380,7 +342,7 @@ int request_song(char *req, char songs[][128], int max)
 
 	if (!end)
 	{
-		Report("Cannot get host name \r\n");
+		UART_PRINT("Cannot get host name \r\n");
 		return -1;
 	}
 
@@ -396,7 +358,7 @@ int request_song(char *req, char songs[][128], int max)
 
     if(retVal < 0)
     {
-    	Report("Cannot get host %s: %x > %d\r\n", host, ip, retVal);
+    	UART_PRINT("Cannot get host %s: %x > %d\r\n", host, ip, retVal);
     	return -1;
     }
 
@@ -417,12 +379,6 @@ int request_song(char *req, char songs[][128], int max)
 	strcat(g_buff, "\r\n");
 	strcat(g_buff, HTTP_END_OF_HEADER);
 
-/*
-	sprintf(g_buff, POST_BUFFER, pBuff, host);
-	strcat(g_buff, HTTP_END_OF_HEADER);
-*/
-//	UART_PRINT("SEND: %s\r\n", g_buff);
-	// Send the HTTP GET string to the opened TCP/IP socket.
     transfer_len = sl_Send(g_iSockID, g_buff, strlen((const char *)g_buff), 0);
 
 	if (transfer_len < 0)
@@ -452,27 +408,18 @@ int request_song(char *req, char songs[][128], int max)
 			goto end;
 		}
 
-		// check if content length is transfered with headers
-		pBuff = strstr((const char *)g_buff, HTTP_CONTENT_LENGTH);
-		if(pBuff != 0)
-		{
-			// not supported
-			//UART_PRINT("Server response format is not supported\r\n");//youmaywant read g_buff
-			//UART_PRINT(g_buff);
-			//return -1;
-		}
-
-		// "\r\n\r\n" marks the end of headers
-
-		pBuff = (char *)strstr((const char *)g_buff, HTTP_END_OF_HEADER);
+		pBuff = strstr((const char *)g_buff, HTTP_END_OF_HEADER);
 		while(pBuff == 0)
 		{
 			memset(g_buff, 0, sizeof(g_buff));
 			transfer_len = sl_Recv(g_iSockID, &g_buff[0], MAX_BUFF_SIZE, 0);
-			pBuff = (char *)strstr((const char *)g_buff, HTTP_END_OF_HEADER);			//XXX this may cause /r/n in two buff
+			if(transfer_len <= 0)
+				goto end;
+
+			pBuff = strstr((const char *)g_buff, HTTP_END_OF_HEADER);			//XXX this may cause /r/n in two buff
 		}
 
-		// Increment by 4 to skip "\r\n\r\n"
+		//"\r\n\r\n"
 		pBuff += 4;
 
 		// Adjust buffer data length for header size
@@ -510,8 +457,7 @@ int request_song(char *req, char songs[][128], int max)
 		}
 		else
 		{
-			//Report("request song : %s\r\n", pBuff);
-
+			//UART_PRINT("request song : %s\r\n", pBuff);
 			if(max ==  get_mp3(g_buff, songs, max))
 				break;
 		}
