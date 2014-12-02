@@ -68,7 +68,7 @@
 #define APPLICATION_NAME        "WLAN STATION"
 #define APPLICATION_VERSION     "1.1.0"
 
-#define HOST_NAME               "www.ti.com"
+#define HOST_NAME               "www.douban.com"
 
 //
 // Values for below macros shall be modified for setting the 'Ping' properties
@@ -670,7 +670,7 @@ static long CheckInternetConnection()
     long lRetVal = -1;
 
     CLR_STATUS_BIT(g_ulStatus, STATUS_BIT_PING_DONE);
-    CLR_STATUS_BIT(g_ulStatus, STATUS_BIT_CONNECTION);
+    CLR_STATUS_BIT(g_ulStatus, STATUS_BIT_INET_CONNECT);
     g_ulPingPacketsRecv = 0;
 
     // Set the ping parameters
@@ -710,7 +710,7 @@ static long CheckInternetConnection()
     }
 
     // Internet connection is successful
-    SET_STATUS_BIT(g_ulStatus, STATUS_BIT_CONNECTION);
+    SET_STATUS_BIT(g_ulStatus, STATUS_BIT_INET_CONNECT);
     return SUCCESS;
 }
 
@@ -875,14 +875,12 @@ void WlanStationMode( void *pvParameters )
     		lRetVal = WlanConnect();
     		if(lRetVal < 0)
     		{
-    			UART_PRINT("Reconnect failed \n\rPlease check your AP status, hope see you soon.\n\r");
-    			break;
+    			UART_PRINT("Reconnect failed! \n\rPlease check your AP status, connecting will be restart in 10 seconds.\n\r");
     		}
     	}
     }
 
-    LOOP_FOREVER();
-    
+    //LOOP_FOREVER();
 }
 //*****************************************************************************
 //
@@ -957,6 +955,7 @@ void FMPlayer(void *pvParameters)
 
 	LOOP_FOREVER();
 }
+
 //*****************************************************************************
 //                            MAIN FUNCTION
 //*****************************************************************************
@@ -1009,19 +1008,19 @@ void main()
     //
     lRetVal = osi_TaskCreate( WlanStationMode, \
                                 (const signed char*)"Wlan Station Task", \
-                                OSI_STACK_SIZE, NULL, 1, NULL );
+                                OSI_STACK_SIZE, NULL, 5, NULL );
     if(lRetVal < 0)
     {
         ERR_PRINT(lRetVal);
         LOOP_FOREVER();
     }
-     
+
     //
     // Start our app
     //
     lRetVal = osi_TaskCreate( FMPlayer, \
                                 (const signed char*)"Douban FM Player", \
-                                OSI_STACK_SIZE, NULL, 1, NULL );
+                                OSI_STACK_SIZE * 8, NULL, 3, NULL );
     if(lRetVal < 0)
     {
         ERR_PRINT(lRetVal);

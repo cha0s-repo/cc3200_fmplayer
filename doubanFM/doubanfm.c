@@ -71,7 +71,7 @@ int fm_player(void)
 			{
 				// wait for next try
 				Report("Cannot fitch a song to play, waiting for next try\r\n");
-				osi_Sleep(1000);
+				osi_Sleep(3000);
 				break;
 			}
 		}

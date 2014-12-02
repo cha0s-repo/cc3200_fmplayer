@@ -5,6 +5,7 @@
  *      Author: Administrator
  */
 #include <stdlib.h>
+#include "../../cc3200_common.h"
 
 #include "vs1053b.h"
 #include "vs_spi.h"
@@ -55,7 +56,7 @@ unsigned int AUDIO_FIFO_FULL = 0;
 #define DEFAULT_TREBLEAMP              (0)      //  -8 -     7 dB
 #define DEFAULT_TREBLEFREQ             (15000)  //1000 - 15000 Hz
 
-//VS FiFo
+//VS FiFO
 #define VS_BUFSIZE                     (32) //42 kBytes
 
 //VS Type
@@ -100,7 +101,7 @@ const char VS_WRITE = 0x02;
 //RAM Data
 #define VS_RAM_ENDFILLBYTE             (0x1E06)  //End fill byte
 
-#define debug_msg			Report
+#define debug_msg			UART_PRINT
 
 #define STEP							8
 
@@ -147,18 +148,12 @@ int AUDIO_FIFO_INIT(void)
 	AUDIO_FIFO = (char *)malloc(AUDIO_FIFO_SIZE * sizeof(char));
 	return 0;
 }
+
 void delay_m(int m)
 {
-	//under 80M
-	unsigned int a,b,i,j;
-
-	a = 80;
-	b = 1500;
-
-	for(; m > 0; m--)
-		for(i = 0;i < a; i++);
-			for(j = 0;j < b; j++);
+	osi_Sleep(m);
 }
+
 unsigned short vs_read_reg(char addr)
 {
 	vs_cs(0);

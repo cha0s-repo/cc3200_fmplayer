@@ -32,7 +32,6 @@ static int CreateConnection(unsigned long DestinationIP)
     int             Status = 0;
     int             AddrSize = 0;
     int             SockID = 0;
-    SlSockNonblocking_t enableOption;
 
     Addr.sin_family = SL_AF_INET;
     Addr.sin_port = sl_Htons(80);
@@ -41,46 +40,16 @@ static int CreateConnection(unsigned long DestinationIP)
     AddrSize = sizeof(SlSockAddrIn_t);
 
     SockID = sl_Socket(SL_AF_INET,SL_SOCK_STREAM, 0);
-    if( SockID < 0 )
-    {
-        /* Error */
-        UART_PRINT("Error while opening the socket\r\n");
-        return -1;
-    }
+    ASSERT_ON_ERROR(SockID);
 
-    enableOption.NonblockingEnabled = 1;
-    sl_SetSockOpt(SockID,SOL_SOCKET,SL_SO_NONBLOCKING, &enableOption,sizeof(enableOption)); // Enable/disable nonblocking mode
     Status = sl_Connect(SockID, ( SlSockAddr_t *)&Addr, AddrSize);
     if( Status < 0 )
     {
         /* Error */
-        UART_PRINT("Error during connection with server: %d\r\n", Status);
         sl_Close(SockID);
-        return -1;
+        ASSERT_ON_ERROR(Status);
     }
     return SockID;
-}
-
-static unsigned long hexToi(unsigned char *ptr)
-{
-    unsigned long result = 0;
-    int idx = 0;
-    unsigned int len = strlen((const char *)ptr);
-
-    /* convert charecters to upper case */
-    for(idx = 0; ptr[idx] != '\0'; ++idx)
-        if(ptr[idx] > 96 && ptr[idx] < 103)
-            ptr[idx] -= 32;
-
-    for(idx = 0; ptr[idx] != '\0'; ++idx)
-    {
-        if(ptr[idx] <= 57)
-            result += (ptr[idx]-48)*(1<<(4*(len-1-idx)));
-        else
-            result += (ptr[idx]-55)*(1<<(4*(len-1-idx)));
-    }
-
-    return result;
 }
 
 static int get_mp3(char *buff, char songs[][128], int max)
@@ -206,9 +175,7 @@ int play_song(char *req)
 		return -1;
 	}
 
-
 	audio_play_start();
-
 
 	memset(g_buff, 0, sizeof(g_buff));
 	// Recv HTTP Header.
@@ -259,6 +226,7 @@ int play_song(char *req)
 			if(transfer_len == 0)
 			{
 				pBuff = NULL;
+				UART_PRINT("Header recv end\r\n");
 				goto end;
 			}
 			pBuff = strstr((const char *)g_buff, HTTP_END_OF_HEADER);			//XXX this may cause /r/n in two buff
@@ -271,10 +239,15 @@ int play_song(char *req)
 		transfer_len -= (pBuff - g_buff);
 	}
 	else
+	{
+		UART_PRINT("Recv header failed\r\n");
 		goto end;
+	}
 
+	i = 0;
 	while (0 < transfer_len)
 	{
+		i += transfer_len;
 		audio_player(pBuff, transfer_len);
 
 		memset(g_buff, 0, sizeof(g_buff));
@@ -304,7 +277,6 @@ int play_song(char *req)
 
 end:
 	audio_play_end();
-
 	sl_Close(g_iSockID);
 	return 0;
 }
@@ -362,11 +334,10 @@ int request_song(char *req, char songs[][128], int max)
     	return -1;
     }
 
-
 	g_iSockID = CreateConnection(ip);
 	if(g_iSockID < 0)
 	{
-		UART_PRINT("open socket failed\r\n");
+		UART_PRINT("[%s]open socket failed.\r\n", "request_song");
 		return -1;
 	}
 	memset(g_buff, 0, sizeof(g_buff));
@@ -432,7 +403,6 @@ int request_song(char *req, char songs[][128], int max)
 		pBuff = strstr((const char *)g_buff, ".mp3");
 		if (pBuff == NULL)
 		{
-			//UART_PRINT("recv......\r\n");
 			timeout.tv_sec = 3;
 			timeout.tv_usec = 0;
 
@@ -462,7 +432,6 @@ int request_song(char *req, char songs[][128], int max)
 				break;
 		}
 	}
-	UART_PRINT("get list done\r\n");
 end:
 	sl_Close(g_iSockID);
 	return 0;
