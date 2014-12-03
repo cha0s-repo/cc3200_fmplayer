@@ -28,25 +28,25 @@
 
 static int CreateConnection(unsigned long DestinationIP)
 {
-    SlSockAddrIn_t  Addr;
+	sockaddr_in  Addr;
     int             Status = 0;
     int             AddrSize = 0;
     int             SockID = 0;
 
-    Addr.sin_family = SL_AF_INET;
-    Addr.sin_port = sl_Htons(80);
-    Addr.sin_addr.s_addr = sl_Htonl(DestinationIP);
+    Addr.sin_family = AF_INET;
+    Addr.sin_port = htonl(80);
+    Addr.sin_addr.s_addr = htonl(DestinationIP);
 
-    AddrSize = sizeof(SlSockAddrIn_t);
+    AddrSize = sizeof(sockaddr_in);
 
-    SockID = sl_Socket(SL_AF_INET,SL_SOCK_STREAM, 0);
+    SockID = socket(AF_INET,SOCK_STREAM, 0);
     ASSERT_ON_ERROR(SockID);
 
-    Status = sl_Connect(SockID, ( SlSockAddr_t *)&Addr, AddrSize);
+    Status = connect(SockID, ( sockaddr *)&Addr, AddrSize);
     if( Status < 0 )
     {
         /* Error */
-        sl_Close(SockID);
+        close(SockID);
         ASSERT_ON_ERROR(Status);
     }
     return SockID;
@@ -111,8 +111,8 @@ int play_song(char *req)
 	unsigned long ip;
 	int i;
 	int nfds;
-	SlFdSet_t readsds;
-	struct SlTimeval_t timeout;
+	fd_set readsds;
+	struct timeval timeout;
 
 	pBuff = strstr(req, "http://");
 	if (pBuff)
@@ -140,7 +140,7 @@ int play_song(char *req)
 	host[i+1] = '\0';
 	pBuff = end;
 
-	retVal = sl_NetAppDnsGetHostByName((signed char *)host, strlen(host), &ip, SL_AF_INET);
+	retVal = gethostbyname((signed char *)host, strlen(host), &ip, AF_INET);
     if(retVal < 0)
     {
     	UART_PRINT("Cannot get host %s: %d\r\n", host, ip);
@@ -166,12 +166,12 @@ int play_song(char *req)
 	strcat(s_buff, HTTP_END_OF_HEADER);
 
 	// Send the HTTP GET string to the opened TCP/IP socket.
-    transfer_len = sl_Send(g_iSockID, s_buff, strlen((const char *)s_buff) + 1, 0);
+    transfer_len = send(g_iSockID, s_buff, strlen((const char *)s_buff) + 1, 0);
 
 	if (transfer_len < 0)
 	{
 		UART_PRINT("Socket Send Error\r\n");
-		sl_Close(g_iSockID);
+		close(g_iSockID);
 		return -1;
 	}
 
@@ -179,7 +179,7 @@ int play_song(char *req)
 
 	memset(g_buff, 0, sizeof(g_buff));
 	// Recv HTTP Header.
-	transfer_len = sl_Recv(g_iSockID, &g_buff[0], MAX_BUFF_SIZE, 0);
+	transfer_len = recv(g_iSockID, &g_buff[0], MAX_BUFF_SIZE, 0);
 
 	if(transfer_len > 0)
 	{
@@ -208,19 +208,19 @@ int play_song(char *req)
 			timeout.tv_sec = 5;
 			timeout.tv_usec = 0;
 
-			SL_FD_ZERO(&readsds);
-			SL_FD_SET(g_iSockID, &readsds);
+			FD_ZERO(&readsds);
+			FD_SET(g_iSockID, &readsds);
 			nfds = g_iSockID + 1;
 
-			switch(sl_Select(nfds, &readsds, NULL, NULL, &timeout))
+			switch(select(nfds, &readsds, NULL, NULL, &timeout))
 			{
 			case 0:
 			case -1:
 				UART_PRINT("Select failed in getting header\r\n");
 				goto end;
 			default:
-				if (SL_FD_ISSET(g_iSockID, &readsds))
-					transfer_len = sl_Recv(g_iSockID, &g_buff[0], MAX_BUFF_SIZE, 0);
+				if (FD_ISSET(g_iSockID, &readsds))
+					transfer_len = recv(g_iSockID, &g_buff[0], MAX_BUFF_SIZE, 0);
 			}
 
 			if(transfer_len == 0)
@@ -255,20 +255,20 @@ int play_song(char *req)
 		timeout.tv_sec = 10;
 		timeout.tv_usec = 0;
 
-		SL_FD_ZERO(&readsds);
-		SL_FD_SET(g_iSockID, &readsds);
+		FD_ZERO(&readsds);
+		FD_SET(g_iSockID, &readsds);
 		nfds = g_iSockID + 1;
 
-		switch(sl_Select(nfds, &readsds, NULL, NULL, &timeout))
+		switch(select(nfds, &readsds, NULL, NULL, &timeout))
 		{
 		case 0:
 		case -1:
 			UART_PRINT("Select failed when playing\r\n");
 			goto end;
 		default:
-			if (SL_FD_ISSET(g_iSockID, &readsds))
+			if (FD_ISSET(g_iSockID, &readsds))
 			{
-				transfer_len = sl_Recv(g_iSockID, &g_buff[0], MAX_BUFF_SIZE, 0);
+				transfer_len = recv(g_iSockID, &g_buff[0], MAX_BUFF_SIZE, 0);
 				pBuff = g_buff;
 			}
 		}
@@ -277,7 +277,7 @@ int play_song(char *req)
 
 end:
 	audio_play_end();
-	sl_Close(g_iSockID);
+	close(g_iSockID);
 	return 0;
 }
 
@@ -297,8 +297,8 @@ int request_song(char *req, char songs[][128], int max)
 	int i;
 
 	int nfds;
-	SlFdSet_t readsds;
-	struct SlTimeval_t timeout;
+	fd_set readsds;
+	struct timeval timeout;
 
 	pBuff = strstr(req, "http://");
 	if (pBuff)
@@ -326,7 +326,7 @@ int request_song(char *req, char songs[][128], int max)
 	host[i+1] = '\0';
 	pBuff = end;
 
-	retVal = sl_NetAppDnsGetHostByName((signed char *)host, strlen(host), &ip, SL_AF_INET);
+	retVal = gethostbyname((signed char *)host, strlen(host), &ip, AF_INET);
 
     if(retVal < 0)
     {
@@ -350,7 +350,7 @@ int request_song(char *req, char songs[][128], int max)
 	strcat(g_buff, "\r\n");
 	strcat(g_buff, HTTP_END_OF_HEADER);
 
-    transfer_len = sl_Send(g_iSockID, g_buff, strlen((const char *)g_buff), 0);
+    transfer_len = send(g_iSockID, g_buff, strlen((const char *)g_buff), 0);
 
 	if (transfer_len < 0)
 	{
@@ -361,7 +361,7 @@ int request_song(char *req, char songs[][128], int max)
 	memset(g_buff, 0, sizeof(g_buff));
 
 	// get the reply from the server in buffer.
-	transfer_len = sl_Recv(g_iSockID, &g_buff[0], MAX_BUFF_SIZE, 0);
+	transfer_len = recv(g_iSockID, &g_buff[0], MAX_BUFF_SIZE, 0);
 
 	if(transfer_len > 0)
 	{
@@ -383,7 +383,7 @@ int request_song(char *req, char songs[][128], int max)
 		while(pBuff == 0)
 		{
 			memset(g_buff, 0, sizeof(g_buff));
-			transfer_len = sl_Recv(g_iSockID, &g_buff[0], MAX_BUFF_SIZE, 0);
+			transfer_len = recv(g_iSockID, &g_buff[0], MAX_BUFF_SIZE, 0);
 			if(transfer_len <= 0)
 				goto end;
 
@@ -406,21 +406,21 @@ int request_song(char *req, char songs[][128], int max)
 			timeout.tv_sec = 3;
 			timeout.tv_usec = 0;
 
-			SL_FD_ZERO(&readsds);
-			SL_FD_SET(g_iSockID, &readsds);
+			FD_ZERO(&readsds);
+			FD_SET(g_iSockID, &readsds);
 			nfds = g_iSockID + 1;
 
-			switch(sl_Select(nfds, &readsds, NULL, NULL, &timeout))
+			switch(select(nfds, &readsds, NULL, NULL, &timeout))
 			{
 			case 0:
 			case -1:
 				UART_PRINT("Select failed when getting song list\r\n");
 				goto end;
 			default:
-				if (SL_FD_ISSET(g_iSockID, &readsds))
+				if (FD_ISSET(g_iSockID, &readsds))
 				{
 					memset(g_buff, 0, sizeof(g_buff));
-					transfer_len = sl_Recv(g_iSockID, &g_buff[0], MAX_BUFF_SIZE, 0);
+					transfer_len = recv(g_iSockID, &g_buff[0], MAX_BUFF_SIZE, 0);
 				}
 			}
 
@@ -433,6 +433,6 @@ int request_song(char *req, char songs[][128], int max)
 		}
 	}
 end:
-	sl_Close(g_iSockID);
+	close(g_iSockID);
 	return 0;
 }

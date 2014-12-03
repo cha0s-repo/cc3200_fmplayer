@@ -19,7 +19,8 @@
 #define FM_SONG		"www.douban.com/j/app/radio/people?app_name=radio_desktop_win&version=100&channel=%s&type=n"
 #define FM_LOGIN	"www.douban.com/j/app/login"
 
-static char song_list[10][128];			// for at least 10 songs
+#define LIST_SONG	5
+static char song_list[LIST_SONG][128];			// server returns 5 songs every request
 
 int fm_get_channel(unsigned char ch_id[])
 {
@@ -32,7 +33,7 @@ int fm_get_songs(char *ch_id)
 
 	sprintf(buff, FM_SONG, ch_id);
 
-	request_song(buff, song_list, 10);
+	request_song(buff, song_list, LIST_SONG);
 
 	return 0;
 }
